@@ -53,6 +53,53 @@
 
 ---
 
+## 源码构建
+
+### 目录结构
+
+| 路径 | 说明 |
+| --- | --- |
+| `gui_patcher.py` | Python + Tkinter 图形界面（选文件 / 检测 / 打补丁 / 调用引擎） |
+| `engine/Program.cs` | C# + dnlib 补丁引擎：按**名**定位 `runBurst`，输出状态 JSON |
+| `engine/BurstFaintEngine.csproj` | 引擎工程（dnlib 通过 NuGet 引用，无需本机路径） |
+| `LICENSE` | MIT 许可证 |
+
+### 1. 编译补丁引擎（需 .NET 8 SDK）
+
+```bash
+cd engine
+dotnet publish -c Release -r win-x64 --self-contained true \
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
+  -p:DebugType=none -o publish
+```
+
+产物：`engine/publish/BurstFaintEngine.exe`（自包含单文件，内含 .NET 运行时）。
+
+### 2. 打包 GUI（需 Python 3.10+ 与 PyInstaller）
+
+```bash
+pip install pyinstaller
+python -m PyInstaller --onefile --windowed --name BurstFaintPatcher \
+  --distpath publish_py --workpath build_py \
+  --add-binary "engine/publish/BurstFaintEngine.exe;." \
+  --add-data "LICENSE;." \
+  gui_patcher.py
+```
+
+> `--add-binary` / `--add-data` 的分隔符在 **Windows 上是 `;`**（Linux/macOS 上是 `:`）。
+
+产物：`publish_py/BurstFaintPatcher.exe`（单文件，已内嵌引擎与 LICENSE）。
+
+### 3. 直接以源码运行（不打包）
+
+```bash
+python gui_patcher.py
+```
+
+> 需先保证 `engine/publish/BurstFaintEngine.exe` 已存在，否则界面调用引擎时会报「未找到补丁引擎」。
+
+---
+
 ## 常见问题
 
 - **点「检测状态」会顿一下？**
