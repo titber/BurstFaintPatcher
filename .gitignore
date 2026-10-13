@@ -1,0 +1,14 @@
+# ---- 构建产物 / 临时目录（不入库）----
+bin/
+obj/
+dist/
+build/
+build_py/
+__pycache__/
+*.pyc
+*.spec
+
+# ---- 引擎发布产物（体积大，建议放 GitHub Release 而非提交进仓库）----
+# 如果确实想把编译好的引擎也放进仓库，注释掉下面两行即可
+engine/publish/
+publish_py/
