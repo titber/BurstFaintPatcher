@@ -96,6 +96,17 @@ class Engine
         Console.Out.WriteLine(sb.ToString());
     }
 
+    // 目标被其他进程内存映射时 File.Replace 会失败(ERROR_USER_MAPPED_FILE)，
+    // 但 Windows 允许重命名已被映射的文件，故退化为“改名 -> 落位 -> 清理”。
+    static void SwapByRename(string newFile, string target)
+    {
+        string old = target + ".old";
+        if (File.Exists(old)) File.Delete(old);
+        File.Move(target, old);
+        File.Move(newFile, target);
+        try { File.Delete(old); } catch { /* 删除失败则保留 .old，不影响新文件生效 */ }
+    }
+
     static int Main(string[] args)
     {
         try
@@ -125,7 +136,10 @@ class Engine
                 return 1;
             }
 
-            var mod = ModuleDefMD.Load(dll);
+            // 关键：用字节数组加载，绝不让 dnlib 以内存映射方式持有源文件。
+            // 否则 --inplace 写回同一路径会抛 ERROR_USER_MAPPED_FILE(1224):
+            // “请求的操作无法在使用用户映射区域打开的文件上执行”。
+            var mod = ModuleDefMD.Load(File.ReadAllBytes(dll));
             TypeDef t = null;
             foreach (var td in mod.GetTypes())
             {
@@ -218,8 +232,23 @@ class Engine
                 {
                     finalOut = dll + ".patched.dll";
                 }
-                mod.Write(finalOut);
+                // 先写同目录临时文件，再原子替换目标：
+                // 既避免写一半损坏原文件，也绕开源文件句柄/映射的干扰。
+                string tmp = finalOut + ".tmp";
+                if (File.Exists(tmp)) File.Delete(tmp);
+                mod.Write(tmp);
                 mod.Dispose();
+
+                if (!File.Exists(finalOut))
+                {
+                    File.Move(tmp, finalOut);
+                }
+                else
+                {
+                    try { File.Replace(tmp, finalOut, null); }
+                    catch (IOException) { SwapByRename(tmp, finalOut); }
+                    catch (UnauthorizedAccessException) { SwapByRename(tmp, finalOut); }
+                }
                 EmitJson("pristine_patched", "已打补丁：晕厥判定改为 fainted_ratio >= 1.0。", finalOut);
                 return 0;
             }
